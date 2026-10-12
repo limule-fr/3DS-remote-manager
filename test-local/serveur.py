@@ -13,7 +13,7 @@ DOSSIER_RECU = Path(__file__).parent / "recu"
 DOSSIER_TEMP = Path(__file__).parent / "temp"
 
 TAILLE_BLOC = 1024 * 1024
-TAILLE_MAX = 50 * 1024 * 1024
+TAILLE_MAX = 2 * 1024 * 1024 * 1024
 DUREE_MAX = 3600
 
 # Transferts temporaires en mémoire : identifiant -> métadonnées.

@@ -7,7 +7,7 @@ from pathlib import Path
 
 SERVEUR = "http://127.0.0.1:8765"
 TAILLE_BLOC = 1024 * 1024
-TAILLE_MAX = 50 * 1024 * 1024
+TAILLE_MAX = 2 * 1024 * 1024 * 1024
 
 
 def calculer_sha256(chemin):
