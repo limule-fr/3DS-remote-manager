@@ -84,11 +84,12 @@ class RemoteManager:
             font=("Sans", 10, "bold")
         ).pack(anchor="w", pady=(10, 3))
 
-        ttk.Label(
+        self.hash_entry = ttk.Entry(
             main,
             textvariable=self.hash_value,
-            wraplength=620
-        ).pack(anchor="w")
+            state="readonly"
+        )
+        self.hash_entry.pack(fill="x", pady=(0, 3))
 
         buttons = ttk.Frame(main)
         buttons.pack(fill="x", pady=16)
