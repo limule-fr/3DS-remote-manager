@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 8765
 
 DOSSIER_RECU = Path(__file__).parent / "recu"
