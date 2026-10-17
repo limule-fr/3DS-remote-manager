@@ -5,7 +5,8 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
+import re
 
 
 CHUNK_SIZE = 1024 * 1024  # 1 Mio
