@@ -16,11 +16,14 @@ class RemoteManager:
     def __init__(self, root):
         self.root = root
         self.root.title("3DS Remote Manager")
-        self.root.geometry("700x570")
+        self.root.geometry("700x720")
         self.root.minsize(580, 500)
 
         self.file_path = None
         self.file_hash = None
+        
+        self.destination_root = tk.StringVar(value="")
+        self.game_id = tk.StringVar(value="")
 
         self.cancel_event = threading.Event()
         self.operation_running = False
@@ -56,6 +59,49 @@ class RemoteManager:
         ).pack(pady=(0, 18))
 
         ttk.Separator(main).pack(fill="x", pady=5)
+
+        target = ttk.LabelFrame(
+            main,
+            text="Destination de test",
+            padding=10
+        )
+        target.pack(fill="x", pady=8)
+
+        ttk.Label(
+            target,
+            text="Racine de destination :"
+        ).pack(anchor="w")
+
+        root_row = ttk.Frame(target)
+        root_row.pack(fill="x", pady=4)
+
+        ttk.Entry(
+            root_row,
+            textvariable=self.destination_root
+        ).pack(side="left", fill="x", expand=True)
+
+        ttk.Button(
+            root_row,
+            text="Parcourir...",
+            command=self.choose_destination_root
+        ).pack(side="right", padx=(8, 0))
+
+        ttk.Label(
+            target,
+            text="Identifiant du jeu (16 caractères hexadécimaux) :"
+        ).pack(anchor="w", pady=(8, 2))
+
+        ttk.Entry(
+            target,
+            textvariable=self.game_id,
+            width=24
+        ).pack(anchor="w")
+
+        ttk.Button(
+            target,
+            text="Vérifier / créer le dossier",
+            command=self.check_game_folder
+        ).pack(anchor="w", pady=(8, 0))
 
         ttk.Label(
             main,
@@ -178,6 +224,81 @@ class RemoteManager:
             font=("Sans", 9)
         ).pack(anchor="w", pady=(5, 0))
 
+        def choose_destination_root(self):
+        path = filedialog.askdirectory(
+            title="Choisir la racine de destination"
+        )
+
+        if path:
+            self.destination_root.set(path)
+            self.status.set("Destination sélectionnée")
+
+    def get_game_folder(self):
+        game_id = self.game_id.get().strip().upper()
+
+        if not re.fullmatch(r"[0-9A-F]{16}", game_id):
+            messagebox.showwarning(
+                "Identifiant invalide",
+                "L'identifiant doit contenir exactement "
+                "16 caractères hexadécimaux."
+            )
+            return None
+
+        root = self.destination_root.get().strip()
+
+        if not root or not os.path.isdir(root):
+            messagebox.showwarning(
+                "Destination invalide",
+                "Sélectionne d'abord un dossier de destination."
+            )
+            return None
+
+        return os.path.join(os.path.realpath(root), game_id)
+
+    def check_game_folder(self):
+        folder = self.get_game_folder()
+
+        if folder is None:
+            return
+
+        if os.path.isdir(folder):
+            messagebox.showinfo(
+                "Dossier trouvé",
+                f"Le dossier existe déjà :\n{folder}"
+            )
+            self.status.set("Dossier du jeu trouvé")
+            return
+
+        if os.path.exists(folder):
+            messagebox.showerror("Erreur",
+                "Un fichier portant ce nom existe déjà."
+            )
+            return
+
+        accepted = messagebox.askyesno(
+            "Créer le dossier",
+            f"Ce dossier n'existe pas :\n{folder}\n\n"
+            "Veux-tu le créer ?"
+        )
+
+        if not accepted:
+            return
+
+        try:
+            os.makedirs(folder, exist_ok=False)
+
+            messagebox.showinfo(
+                "Dossier créé",
+                f"Le dossier a été créé :\n{folder}"
+            )
+            self.status.set("Dossier du jeu créé")
+
+        except OSError as error:
+            messagebox.showerror(
+                "Erreur",
+                f"Impossible de créer le dossier :\n{error}"
+            )   
+    
     def set_busy(self, busy):
         self.operation_running = busy
 
