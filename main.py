@@ -148,6 +148,14 @@ class RemoteManager:
         )
         self.choose_button.pack(side="left", padx=(0, 8))
 
+        self.choose_folder_button = ttk.Button(
+            buttons,
+            text="Choisir un dossier",
+            command=self.choose_folder
+        )
+        self.choose_folder_button.pack(side="left", padx=(0, 8))
+
+
         self.hash_button = ttk.Button(
             buttons,
             text="Calculer SHA-256",
@@ -224,14 +232,46 @@ class RemoteManager:
             font=("Sans", 9)
         ).pack(anchor="w", pady=(5, 0))
 
-    def choose_destination_root(self):
-        path = filedialog.askdirectory(
-            title="Choisir la racine de destination"
-        )
 
-        if path:
-            self.destination_root.set(path)
-            self.status.set("Destination sélectionnée")
+    def choose_destination_root(self):
+        try:
+            result = subprocess.run(
+                [
+                    "zenity",
+                    "--file-selection",
+                    "--directory",
+                    "--title=Choisir la racine de destination"
+                ],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip()
+                self.destination_root.set(path)
+                self.status.set("Destination sélectionnée")
+
+            elif result.returncode != 1:
+                messagebox.showerror(
+                    "Erreur",
+                    f"Impossible d'ouvrir le sélecteur :\n"
+                    f"{result.stderr}"
+                )
+
+        except OSError as error:
+            messagebox.showerror(
+                "Erreur",
+                f"Impossible d'ouvrir Zenity :\n{error}"
+            )
+
+        except OSError as error:
+            messagebox.showerror(
+                "Erreur",
+                f"Impossible d'ouvrir Zenity :\n{error}"
+            )
+
+    
 
     def get_game_folder(self):
         game_id = self.game_id.get().strip().upper()
@@ -306,6 +346,7 @@ class RemoteManager:
         self.choose_button.configure(state=state)
         self.hash_button.configure(state=state)
         self.prepare_button.configure(state=state)
+        self.choose_folder_button.configure(state=state)
 
         self.cancel_button.configure(
             state="normal" if busy else "disabled"
@@ -408,51 +449,214 @@ class RemoteManager:
             daemon=True
         ).start()
 
+    def choose_folder(self):
+        if self.operation_running:
+            return
+
+        if shutil.which("zenity") is None:
+            messagebox.showerror(
+                "Zenity introuvable",
+                "Impossible d'ouvrir le sélecteur de dossiers."
+            )
+            return
+
+        try:
+            result = subprocess.run(
+                [
+                    "zenity",
+                    "--file-selection",
+                    "--directory",
+                    "--title=Choisir un dossier de mod"
+                ],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+        except OSError as error:
+            messagebox.showerror("Erreur", str(error))
+            return
+
+        if result.returncode != 0:
+            return
+
+        path = result.stdout.strip()
+
+        if not path or not os.path.isdir(path):
+            return
+
+        try:
+            total_size = 0
+
+            for current, dirs, files in os.walk(
+                path,
+                followlinks=False
+            ):
+                dirs[:] = sorted(
+                    d for d in dirs
+                    if not os.path.islink(
+                        os.path.join(current, d)
+                    )
+                )
+
+                for name in files:
+                    full_path = os.path.join(current, name)
+
+                    if os.path.islink(full_path):
+                        continue
+
+                    total_size += os.path.getsize(full_path)
+
+        except OSError as error:
+            messagebox.showerror(
+                "Erreur de lecture",
+                f"Impossible de lire le dossier :\n{error}"
+            )
+            return
+
+        self.file_path = path
+        self.file_hash = None
+
+        self.filename.set(
+            os.path.basename(os.path.normpath(path))
+            + " (dossier)"
+        )
+
+        self.filesize.set(
+            f"{total_size:,} octets "
+            f"({total_size / 1024 / 1024:.2f} Mio)"
+        )
+
+        self.hash_value.set("Non calculée")
+        self.status.set("Dossier sélectionné")
+        self.reset_progress()
+
     def hash_worker(self):
         started = time.monotonic()
         processed = 0
         digest = hashlib.sha256()
 
         try:
-            total = os.path.getsize(self.file_path)
+            # Déterminer si la sélection est un fichier ou un dossier.
+            is_directory = os.path.isdir(self.file_path)
 
-            with open(self.file_path, "rb") as file:
-                while True:
-                    if self.cancel_event.is_set():
-                        self.root.after(
-                            0,
-                            lambda: self.finish_cancelled(
-                                "Calcul SHA-256 annulé"
-                            )
+            if is_directory:
+                # Construire la liste des fichiers sans suivre les liens symboliques.
+                files_to_hash = []
+
+                for current, dirs, files in os.walk(
+                    self.file_path,
+                    followlinks=False
+                ):
+                    dirs[:] = sorted(
+                        d for d in dirs
+                        if not os.path.islink(
+                            os.path.join(current, d)
                         )
-                        return
-
-                    chunk = file.read(CHUNK_SIZE)
-
-                    if not chunk:
-                        break
-
-                    digest.update(chunk)
-                    processed += len(chunk)
-
-                    elapsed = max(time.monotonic() - started, 0.001)
-                    speed = processed / elapsed
-                    percent = (
-                        processed / total * 100
-                        if total > 0 else 100
-                    )
-                    remaining = (
-                        (total - processed) / speed
-                        if speed > 0 else 0
                     )
 
+                    for name in sorted(files):
+                        full_path = os.path.join(current, name)
+
+                        if os.path.islink(full_path):
+                            continue
+
+                        if os.path.isfile(full_path):
+                            relative_path = os.path.relpath(
+                                full_path,
+                                self.file_path
+                            ).replace(os.sep, "/")
+
+                            files_to_hash.append(
+                                (relative_path, full_path)
+                            )
+
+                files_to_hash.sort(key=lambda item: item[0])
+
+                total = sum(
+                    os.path.getsize(path)
+                    for _, path in files_to_hash
+                )
+
+            else:
+                files_to_hash = [
+                    (os.path.basename(self.file_path), self.file_path)
+                ]
+
+                total = os.path.getsize(self.file_path)
+
+            # Calculer l'empreinte.
+            for relative_path, full_path in files_to_hash:
+
+                if self.cancel_event.is_set():
                     self.root.after(
                         0,
-                        lambda p=percent, s=speed, r=remaining:
-                            self.update_progress(p, s, r)
+                        lambda: self.finish_cancelled(
+                            "Calcul SHA-256 annulé"
+                        )
                     )
+                    return
+
+                # Pour un dossier, intégrer le chemin relatif et la taille.
+                # Pour un fichier seul, conserver le SHA-256 standard.
+                if is_directory:
+                    path_bytes = relative_path.encode("utf-8")
+                    size = os.path.getsize(full_path)
+
+                    digest.update(len(path_bytes).to_bytes(8, "big"))
+                    digest.update(path_bytes)
+                    digest.update(size.to_bytes(8, "big"))
+
+                with open(full_path, "rb") as file:
+                    while True:
+                        if self.cancel_event.is_set():
+                            self.root.after(
+                                0,
+                                lambda: self.finish_cancelled(
+                                    "Calcul SHA-256 annulé"
+                                )
+                            )
+                            return
+
+                        chunk = file.read(CHUNK_SIZE)
+
+                        if not chunk:
+                            break
+
+                        digest.update(chunk)
+                        processed += len(chunk)
+
+                        elapsed = max(
+                        time.monotonic() - started,
+                            0.001
+                        )
+
+                        speed = processed / elapsed
+
+                        percent = (
+                            processed / total * 100
+                            if total > 0 else 0
+                        )
+
+                        remaining = (
+                            (total - processed) / speed
+                            if speed > 0 else 0
+                        )
+
+                        self.root.after(
+                            0,
+                            lambda p=percent, s=speed, r=remaining:
+                                self.update_progress(p, s, r)
+                        )
 
             result = digest.hexdigest()
+
+            # Un dossier vide ou composé uniquement de fichiers vides
+            # doit tout de même terminer à 100 %.
+            if total == 0:
+                self.root.after(
+                    0,
+                    lambda: self.update_progress(100, 0, 0)
+                )
 
             self.root.after(
                 0,
