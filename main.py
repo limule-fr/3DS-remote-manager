@@ -224,7 +224,7 @@ class RemoteManager:
             font=("Sans", 9)
         ).pack(anchor="w", pady=(5, 0))
 
-        def choose_destination_root(self):
+    def choose_destination_root(self):
         path = filedialog.askdirectory(
             title="Choisir la racine de destination"
         )
